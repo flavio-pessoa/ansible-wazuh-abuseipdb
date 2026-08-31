@@ -1,0 +1,6 @@
+{
+  "abuseipdb_source_base_url": "https://raw.githubusercontent.com/borestad/blocklist-abuseipdb/refs/heads/main/abuseipdb-s100-7d.ipv4",
+  "custom_abuseipdb_srcip": "100010",
+  "custom_abuseipdb_dstip": "100011",
+  "custom_rule_level": "10"
+}

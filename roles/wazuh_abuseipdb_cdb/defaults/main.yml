@@ -1,0 +1,80 @@
+---
+# defaults/main.yml
+# Todas essas variáveis podem ser sobrescritas no playbook, no inventário
+# (group_vars/host_vars) ou via --extra-vars.
+
+# Diretórios padrão de instalação do Wazuh Manager
+wazuh_lists_dir: /var/ossec/etc/lists
+wazuh_rules_dir: /var/ossec/etc/rules
+ossec_conf_path: /var/ossec/etc/ossec.conf
+local_rules_path: "{{ wazuh_rules_dir }}/local_rules.xml"
+
+# --- Fonte da blocklist ---
+# abuseipdb_source_base_url é a ÚNICA variável obrigatória: a URL completa
+# do arquivo remoto (ex.: "https://.../abuseipdb-s100-7d.ipv4"). O nome do
+# arquivo local (.txt) e a entrada em ossec.conf/local_rules.xml são
+# derivados automaticamente a partir do último trecho dessa URL (equivalente
+# a um "basename"), então não é preciso informar o nome do arquivo separado.
+# Sem valor padrão: defina obrigatoriamente no playbook, no Grupo de
+# Variáveis do SemaphoreUI ou via --extra-vars. Veja um exemplo em README.md.
+abuseipdb_source_base_url: ""
+
+# URL final da blocklist. Por padrão é igual a abuseipdb_source_base_url;
+# sobrescreva abuseipdb_source_url diretamente só em cenários avançados
+# onde a URL de download precise ser diferente da usada para derivar o nome.
+abuseipdb_source_url: "{{ abuseipdb_source_base_url }}"
+
+# Nome do arquivo remoto, derivado automaticamente do último trecho da URL
+# (ex.: ".../abuseipdb-s100-7d.ipv4" -> "abuseipdb-s100-7d.ipv4"). Pode ser
+# sobrescrito manualmente se a URL não terminar no nome do arquivo desejado.
+abuseipdb_list_name: "{{ abuseipdb_source_base_url | basename }}"
+
+# Caminhos derivados (normalmente não precisam ser alterados)
+# abuseipdb_list_basename remove a extensão de abuseipdb_list_name (ex.:
+# "abuseipdb-s100-7d.ipv4" -> "abuseipdb-s100-7d"), usado para nomear o arquivo local.
+# O Wazuh Manager compila essa lista .txt automaticamente ao reiniciar —
+# não existe um arquivo .cdb separado gerado por esta role (ver tasks/main.yml).
+abuseipdb_list_basename: "{{ abuseipdb_list_name | regex_replace('\\.[^.]+$', '') }}"
+abuseipdb_txt: "{{ wazuh_lists_dir }}/{{ abuseipdb_list_basename }}.txt"
+abuseipdb_tmp_download: "/tmp/{{ abuseipdb_list_basename }}_raw.txt"
+
+# Regra customizada de reputação — verifica o IP de ORIGEM (srcip): conexão
+# de ENTRADA vinda de um IP malicioso conhecido.
+custom_abuseipdb_srcip: "100010"
+custom_rule_level: "10"
+custom_rule_group_marker: "</group>"   # onde a regra será inserida em local_rules.xml
+
+# Texto descritivo da fonte, usado no <description> das duas regras.
+# Baseado no cabeçalho original do arquivo AbuseIPDB: "Aggregated Blocklist
+# for AbuseIPDB: A list of the most reported IP addresses" + "Confidence
+# level: ~100%". Ajuste este texto se apontar 'abuseipdb_source_base_url'
+# para uma fonte com descrição diferente.
+custom_abuseipdb_description: "lista agregada dos IPs mais reportados por abuso (AbuseIPDB, nível de confiança ~100%)"
+
+# ID da regra "irmã" que verifica o IP de DESTINO (dstip) contra a mesma
+# lista — cobre conexões de SAÍDA para um IP malicioso (ex.: host
+# comprometido conversando com C2), complementando a regra de srcip
+# (custom_abuseipdb_srcip), que cobre conexões de ENTRADA vindas de um IP
+# malicioso. Deixe em branco ("") para desativar essa segunda regra.
+custom_abuseipdb_dstip: "100011"
+
+# IMPORTANTE: uma regra do Wazuh só é avaliada se estiver "encaixada" na
+# árvore de avaliação — via <if_sid>, <if_group>, <category> ou
+# <decoded_as>. Sem nenhuma dessas tags, a regra nunca chega a ser testada
+# (mesmo sendo XML válido), então a busca na lista CDB nunca dispara.
+# custom_rule_if_group define o grupo "pai" ao qual a regra fica atrelada
+# (via <if_group>). O padrão "pfsense" funciona para tráfego decodificado
+# pelo decoder "pf" (pfSense/OPNsense via filterlog). Ajuste para o grupo
+# correto do seu ambiente se a origem dos logs for outra (ex.: "syslog"
+# para SSH, "windows" para eventos do Windows, "ids" para IDS/IPS, etc.).
+# Para descobrir o grupo certo, rode `sudo /var/ossec/bin/wazuh-logtest`
+# com um log real da sua fonte e veja o campo "groups" na Fase 3 da regra
+# que casar primeiro.
+custom_rule_if_group: "pfsense"
+
+# Usuário/grupo do serviço Wazuh
+wazuh_user: wazuh
+wazuh_group: wazuh
+
+# Nome do serviço systemd
+wazuh_service_name: wazuh-manager

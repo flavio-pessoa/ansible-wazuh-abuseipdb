@@ -1,0 +1,12 @@
+---
+# group_vars/wazuh_managers.yml
+# Exemplo de como sobrescrever os defaults da role para todo o grupo,
+# sem precisar editar o playbook nem a role.
+#
+# abuseipdb_source_base_url é obrigatória (não tem valor padrão na role) —
+# defina-a aqui, no Grupo de Variáveis do SemaphoreUI, ou via --extra-vars.
+# Veja um exemplo preenchido em README.md.
+
+# abuseipdb_source_base_url: ""
+# custom_abuseipdb_srcip: "100010"
+# custom_rule_level: "10"

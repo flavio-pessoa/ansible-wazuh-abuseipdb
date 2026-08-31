@@ -1,0 +1,12 @@
+---
+# inventory.yml
+# Inventário em formato YAML (compatível com o tipo "Static YAML" do SemaphoreUI).
+
+all:
+  children:
+    wazuh_managers:
+      hosts:
+        wazuh-manager-01:
+          ansible_host: 198.51.100.23
+          ansible_port: 22
+          ansible_user: root

@@ -1,0 +1,26 @@
+---
+# site.yml
+# Playbook de exemplo consumindo a role wazuh_abuseipdb_cdb.
+# Rode com: ansible-playbook -i inventory.ini site.yml
+#
+# abuseipdb_source_base_url é obrigatória (a role não define valor padrão
+# para ela) — é a URL completa do arquivo da blocklist. O nome do arquivo
+# local (.txt) é derivado automaticamente do final dessa URL.
+# Preencha abaixo, em group_vars/wazuh_managers.yml, no Grupo de Variáveis
+# do SemaphoreUI, ou via --extra-vars. Veja um exemplo preenchido em README.md.
+
+- name: Integrar blocklist de reputação de IP como lista CDB no Wazuh
+  hosts: wazuh_managers
+  become: true
+  roles:
+    - role: wazuh_abuseipdb_cdb
+      vars:
+        abuseipdb_source_base_url: ""  # ex.: URL completa do arquivo da blocklist (ver README.md)
+
+    # Exemplo de reuso para uma segunda lista, no mesmo playbook, só
+    # trocando a URL e os IDs das regras:
+    # - role: wazuh_abuseipdb_cdb
+    #   vars:
+    #     abuseipdb_source_base_url: ""
+    #     custom_abuseipdb_srcip: "100012"
+    #     custom_abuseipdb_dstip: "100013"

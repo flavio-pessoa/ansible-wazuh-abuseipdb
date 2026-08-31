@@ -1,0 +1,35 @@
+[
+  {
+    "_comment": "Exemplo de 'Survey Variables' / 'Variáveis de Pesquisa' de um Task Template no SemaphoreUI, no formato aceito pela API (schema TemplateSurveyVar): name, title, description, type ('' = texto, 'int' = inteiro, 'enum' = lista suspensa, 'secret' = campo oculto), required, e 'values' (apenas para type='enum'). A tela da UI também tem um campo 'Default value' (não documentado no schema público da API) — preencha-o se quiser sugerir um valor inicial. Cadastre cada item abaixo na seção 'Variáveis de Pesquisa' das configurações do template.",
+
+    "name": "abuseipdb_source_base_url",
+    "title": "URL completa do arquivo da blocklist",
+    "description": "Ex.: https://raw.githubusercontent.com/borestad/blocklist-abuseipdb/refs/heads/main/abuseipdb-s100-7d.ipv4",
+    "type": "",
+    "required": true
+  },
+  {
+    "name": "custom_abuseipdb_srcip",
+    "title": "ID da regra de entrada (srcip), 100000-120000",
+    "type": "int",
+    "required": true
+  },
+  {
+    "name": "custom_abuseipdb_dstip",
+    "title": "ID da regra de saída (dstip), 100000-120000",
+    "description": "Deixe em branco para desativar a regra de saída",
+    "type": "",
+    "required": false
+  },
+  {
+    "name": "custom_rule_level",
+    "title": "Nível de criticidade do alerta",
+    "type": "enum",
+    "required": true,
+    "values": [
+      { "name": "7 - Baixo",  "value": "7"  },
+      { "name": "10 - Médio", "value": "10" },
+      { "name": "12 - Alto",  "value": "12" }
+    ]
+  }
+]

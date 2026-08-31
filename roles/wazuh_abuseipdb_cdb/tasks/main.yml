@@ -1,0 +1,158 @@
+---
+# tasks/main.yml
+#
+# IMPORTANTE (compilação): o Wazuh Manager compila as listas CDB
+# automaticamente ao iniciar/reiniciar (não existe binário para compilar
+# manualmente, ex.: "wazuh-dbpages" não existe nas versões atuais). O
+# caminho referenciado em ossec.conf/local_rules.xml aponta direto para o
+# arquivo texto chave:valor — não para um .cdb gerado à parte.
+# Ref.: https://documentation.wazuh.com/current/user-manual/ruleset/cdb-list.html
+#
+# IMPORTANTE (formatação): algumas fontes de blocklist (ex.:
+# borestad/blocklist-abuseipdb) trazem comentário INLINE em cada linha de
+# dado (ex.: "1.2.3.4      # US  AS1234   Some ISP"), não só no cabeçalho.
+# A task de formatação remove tudo a partir do primeiro "#" em cada linha
+# (não só linhas que começam com "#"), senão o comentário vira parte da
+# chave no CDB e a lista nunca casa com nenhum IP real.
+#
+# IMPORTANTE (regra): 'srcip' é um campo ESTÁTICO/reservado do Wazuh (assim
+# como dstip, user, id, url etc.). A tag <field name="srcip"> NÃO é
+# permitida para campos estáticos — usá-la quebra o parser com o erro
+# "Field 'srcip' is static", que é FATAL e derruba o wazuh-analysisd
+# (o serviço wazuh-manager falha ao subir). A tag alternativa <srcip> só
+# aceita IP/CIDR literal, não regex — então não serve como "presença
+# genérica".
+#
+# IMPORTANTE (avaliação da regra): uma regra do Wazuh só é AVALIADA se
+# estiver encaixada na árvore de regras — via <if_sid>, <if_group>,
+# <category> ou <decoded_as>. Sem nenhuma dessas tags, a regra nunca chega
+# a ser testada (mesmo sendo XML válido e sem erro nenhum no log), então
+# a busca na lista CDB nunca dispara e nenhum alerta é gerado. Por isso a
+# regra usa <if_group>{{ custom_rule_if_group }}</if_group> — ajuste
+# 'custom_rule_if_group' (ver defaults/main.yml) para o grupo correto da
+# fonte de logs do seu ambiente.
+#
+# IMPORTANTE (direção do tráfego): a lista é verificada tanto contra o IP
+# de ORIGEM (srcip, regra custom_abuseipdb_srcip — conexão de ENTRADA vinda
+# de um IP malicioso) quanto contra o IP de DESTINO (dstip, regra
+# custom_abuseipdb_dstip — conexão de SAÍDA para um IP malicioso, ex.: host
+# comprometido falando com C2). Um único <list> por regra checa só um
+# campo por vez; por isso são duas regras irmãs, não uma só.
+
+- name: Validar que a variável obrigatória foi definida
+  ansible.builtin.assert:
+    that:
+      - abuseipdb_source_base_url | length > 0
+    fail_msg: >
+      Defina 'abuseipdb_source_base_url' com a URL completa do arquivo da
+      blocklist (via playbook, Grupo de Variáveis do SemaphoreUI ou
+      --extra-vars) antes de rodar esta role. Veja um exemplo em README.md.
+    success_msg: "Variável obrigatória definida."
+
+- name: Garantir que o diretório de listas do Wazuh existe
+  ansible.builtin.file:
+    path: "{{ wazuh_lists_dir }}"
+    state: directory
+    owner: "{{ wazuh_user }}"
+    group: "{{ wazuh_group }}"
+    mode: "0750"
+
+- name: Baixar a blocklist AbuseIPDB para arquivo temporário
+  ansible.builtin.get_url:
+    url: "{{ abuseipdb_source_url }}"
+    dest: "{{ abuseipdb_tmp_download }}"
+    mode: "0644"
+    force: true
+  register: download_result
+
+- name: Extrair metadados do cabeçalho da blocklist (Last updated / Number of ips), se disponíveis
+  ansible.builtin.shell: |
+    set -o pipefail
+    grep -E "^# *(Last updated|Number of ips):" {{ abuseipdb_tmp_download }} || true
+  args:
+    executable: /bin/bash
+  register: abuseipdb_metadata
+  changed_when: false
+
+- name: Exibir metadados da blocklist baixada
+  ansible.builtin.debug:
+    msg: "{{ abuseipdb_metadata.stdout_lines | default(['Metadados (Last updated / Number of ips) não encontrados no cabeçalho desta fonte.']) }}"
+
+- name: Extrair apenas o valor de "Last updated" para uso nas descrições das regras
+  ansible.builtin.set_fact:
+    abuseipdb_last_updated_value: "{{ ((abuseipdb_metadata.stdout | default('')) | regex_search('Last updated:\\s*(.+)', '\\1') | default([], true) | first | default('data não disponível', true)) }}"
+
+- name: Formatar lista para o padrão chave:valor exigido pelo Wazuh (CDB)
+  ansible.builtin.shell: |
+    set -o pipefail
+    grep -E -v "^#|^$" {{ abuseipdb_tmp_download }} \
+      | sed 's/#.*$//' \
+      | sed 's/[[:space:]]*$//' \
+      | grep -v '^$' \
+      | sed 's/$/:/' > {{ abuseipdb_txt }}
+  args:
+    executable: /bin/bash
+  register: format_result
+  changed_when: true
+  notify: Reiniciar wazuh-manager
+
+- name: Ajustar dono/permissões do arquivo texto da lista
+  ansible.builtin.file:
+    path: "{{ abuseipdb_txt }}"
+    owner: "{{ wazuh_user }}"
+    group: "{{ wazuh_group }}"
+    mode: "0640"
+
+- name: Remover entradas antigas de <list> desta blocklist no ossec.conf (evita duplicatas/órfãs de execuções anteriores com nome diferente)
+  ansible.builtin.lineinfile:
+    path: "{{ ossec_conf_path }}"
+    regexp: "^\\s*<list>etc/lists/abuseipdb.*</list>\\s*$"
+    state: absent
+  notify: Reiniciar wazuh-manager
+
+- name: Garantir que o bloco <list> está presente dentro de <ruleset> no ossec.conf
+  ansible.builtin.lineinfile:
+    path: "{{ ossec_conf_path }}"
+    insertafter: "<ruleset>"
+    line: "  <list>etc/lists/{{ abuseipdb_list_basename }}.txt</list>"
+    state: present
+  notify: Reiniciar wazuh-manager
+
+- name: Garantir que a regra customizada de reputação (srcip, entrada) existe em local_rules.xml
+  ansible.builtin.blockinfile:
+    path: "{{ local_rules_path }}"
+    marker: "<!-- {mark} ANSIBLE MANAGED BLOCK - regra {{ custom_abuseipdb_srcip }} abuseipdb -->"
+    insertbefore: "{{ custom_rule_group_marker }}"
+    block: |
+      <rule id="{{ custom_abuseipdb_srcip }}" level="{{ custom_rule_level }}">
+      {% if custom_rule_if_group %}
+        <if_group>{{ custom_rule_if_group }}</if_group>
+      {% endif %}
+        <list field="srcip" lookup="address_match_key">etc/lists/{{ abuseipdb_list_basename }}.txt</list>
+        <description>Alerta de Segurança: Conexão de ENTRADA vinda de IP na lista AbuseIPDB ({{ abuseipdb_list_basename }}) — {{ custom_abuseipdb_description }}. Última atualização da lista: {{ abuseipdb_last_updated_value }}. Fonte: {{ abuseipdb_source_url }}</description>
+        <mitre>
+          <id>T1090</id>
+        </mitre>
+        <group>threat_intel, reputation,</group>
+      </rule>
+  notify: Reiniciar wazuh-manager
+
+- name: Garantir que a regra customizada de reputação (dstip, saída) existe em local_rules.xml
+  when: custom_abuseipdb_dstip | length > 0
+  ansible.builtin.blockinfile:
+    path: "{{ local_rules_path }}"
+    marker: "<!-- {mark} ANSIBLE MANAGED BLOCK - regra {{ custom_abuseipdb_dstip }} abuseipdb -->"
+    insertbefore: "{{ custom_rule_group_marker }}"
+    block: |
+      <rule id="{{ custom_abuseipdb_dstip }}" level="{{ custom_rule_level }}">
+      {% if custom_rule_if_group %}
+        <if_group>{{ custom_rule_if_group }}</if_group>
+      {% endif %}
+        <list field="dstip" lookup="address_match_key">etc/lists/{{ abuseipdb_list_basename }}.txt</list>
+        <description>Alerta de Segurança: Conexão de SAÍDA para IP na lista AbuseIPDB ({{ abuseipdb_list_basename }}) — {{ custom_abuseipdb_description }} — possível host comprometido. Última atualização da lista: {{ abuseipdb_last_updated_value }}. Fonte: {{ abuseipdb_source_url }}</description>
+        <mitre>
+          <id>T1090</id>
+        </mitre>
+        <group>threat_intel, reputation,</group>
+      </rule>
+  notify: Reiniciar wazuh-manager

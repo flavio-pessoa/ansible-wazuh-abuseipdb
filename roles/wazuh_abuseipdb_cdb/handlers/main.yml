@@ -1,0 +1,11 @@
+---
+# handlers/main.yml
+#
+# O Wazuh Manager compila as listas CDB automaticamente ao reiniciar —
+# não há handler de compilação manual (ver nota em tasks/main.yml).
+
+- name: Reiniciar wazuh-manager
+  ansible.builtin.systemd:
+    name: "{{ wazuh_service_name }}"
+    state: restarted
+  listen: Reiniciar wazuh-manager

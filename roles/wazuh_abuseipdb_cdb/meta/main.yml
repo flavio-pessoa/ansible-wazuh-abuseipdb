@@ -1,0 +1,27 @@
+---
+galaxy_info:
+  role_name: wazuh_abuseipdb_cdb
+  author: seu_nome
+  description: >
+    Integra listas de reputação de IP (ex.: blocklists do estilo AbuseIPDB/FireHOL)
+    ao Wazuh Manager como lista CDB, incluindo download, formatação,
+    declaração em ossec.conf e criação de regra de alerta customizada.
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms:
+    - name: EL
+      versions:
+        - "8"
+        - "9"
+    - name: Ubuntu
+      versions:
+        - focal
+        - jammy
+        - noble
+  galaxy_tags:
+    - security
+    - wazuh
+    - siem
+    - threat_intel
+
+dependencies: []
