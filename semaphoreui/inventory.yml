@@ -7,6 +7,6 @@ all:
     wazuh_managers:
       hosts:
         wazuh-manager-01:
-          ansible_host: 198.51.100.23
+          ansible_host: 10.0.0.10
           ansible_port: 22
-          ansible_user: root
+          ansible_user: admin
